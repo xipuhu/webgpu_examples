@@ -1,4 +1,4 @@
-# webgpu_exmples
+# webgpu_examples
 一个练习webgpu的个人仓
 
 ## 使用
@@ -9,4 +9,5 @@ npm run dev  // 编译并执行
 
 ## 参考
 代码框架来自：https://github.com/buglas/webgpu-lesson
+
 代码练习内容来自：https://github.com/austinEng/webgpu-samples
