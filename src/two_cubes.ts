@@ -97,10 +97,10 @@ async function initPipeline(
         },
         primitive: {
             topology: "triangle-list",
-            // todo 开启背面剔除
+            //  开启背面剔除
             cullMode: "back",
         },
-        // todo 使能深度测试
+        //  使能深度测试
         depthStencil: {
             depthWriteEnabled: true,
             depthCompare: "less",
@@ -120,7 +120,7 @@ function draw(
     pipeline: GPURenderPipeline,
     canvas: HTMLCanvasElement
 ) {
-    // todo 创建cube vertex buffer
+    //  创建cube vertex buffer
     const cubeVerticesBuffer = device.createBuffer({
         size: cubeVertexArray.byteLength,
         usage: GPUBufferUsage.VERTEX,
@@ -129,7 +129,7 @@ function draw(
     new Float32Array(cubeVerticesBuffer.getMappedRange()).set(cubeVertexArray);
     cubeVerticesBuffer.unmap();
 
-    // todo 创建depth texture
+    //  创建depth texture
     const presentationSize = {
         width: canvas.clientWidth * devicePixelRatio,
         height: canvas.clientHeight * devicePixelRatio,
@@ -140,14 +140,16 @@ function draw(
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     
-    // todo 创建uniform buffer
-    const uniformBufferSize = 4 * 16;  // 4x4 matrix
+    // todo 将两个变换矩阵保存在一个uniform buffer中（两个cube共用一个uniform buffer）
+    const matrixSize = 4 * 16;  // 4x4 matrix
+    const offset = 256; // uniformBindGroup offset must be 256-byte aligned
+    const uniformBufferSize = offset + matrixSize;
     const uniformBuffer = device.createBuffer({
         size: uniformBufferSize,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // todo 为uniformBuffer创建BindGroup
+    //  为uniformBuffer创建BindGroup
     const uniformBindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [
@@ -159,6 +161,22 @@ function draw(
             }
         ]
     });
+
+    // todo 创建第二个BindGroup用来传递变换矩阵
+    const uniformBindGroup2 = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+            {
+                binding: 0,
+                resource: {
+                    buffer: uniformBuffer,
+                    offset: offset,
+                    size: matrixSize
+                }
+            }
+        ]
+    });
+
     const renderPassDescriptor: GPURenderPassDescriptor = {
         colorAttachments: [
             {
@@ -168,7 +186,7 @@ function draw(
                 storeOp: "store", // store/discard
             },
         ],
-        // todo depthStencil attachment
+        //  depthStencil attachment
         depthStencilAttachment: {
             view: depthTexture.createView(),
             
@@ -178,12 +196,12 @@ function draw(
         }
     };
 
-    // todo 创建投影矩阵
+    //  创建投影矩阵
     const aspect = canvas.width / canvas.height;
     const projectionMatrix = mat4.create();
     mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 1, 1000.0);
 
-    // todo 获取获取MVP矩阵数据
+    //  获取获取MVP矩阵数据
     function getTransformationMatrix() {
         const viewMatrix = mat4.create();
         mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -6));
@@ -198,9 +216,25 @@ function draw(
         mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
         return modelViewProjectionMatrix as Float32Array;
     }
-    
+
+    // todo 获取第二个cube的mvp矩阵
+    function getTransformationMatrix2() {
+        const viewMatrix = mat4.create();
+        mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(3, 0, -6));
+        const now = Date.now() / 1000;
+        mat4.rotate(
+            viewMatrix,
+            viewMatrix,
+            1,
+            vec3.fromValues(Math.sin(now), Math.cos(now), 0)
+        );
+        const modelViewProjectionMatrix = mat4.create();
+        mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
+        return modelViewProjectionMatrix as Float32Array;
+    }
+
     function frame(){
-        // todo 将旋转矩阵数据写入uniform buffer中
+        //  将旋转矩阵数据写入uniform buffer中
         const transformationMatrix = getTransformationMatrix();
         device.queue.writeBuffer(
             uniformBuffer,
@@ -210,20 +244,36 @@ function draw(
             transformationMatrix.byteLength,
         );
 
-        // todo 获取最新的canvas上下文纹理视图用于刷新帧内容
+        // todo 将第二个cube的mvp矩阵数据写入buffer
+        const transformationMatrix2 = getTransformationMatrix2();
+        device.queue.writeBuffer(
+            uniformBuffer,
+            256,
+            transformationMatrix2.buffer,
+            transformationMatrix2.byteOffset,
+            transformationMatrix2.byteLength,
+        );
+
+        //  获取最新的canvas上下文纹理视图用于刷新帧内容
         renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
 
         const commandEncoder = device.createCommandEncoder();
         const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
         passEncoder.setPipeline(pipeline);
-        passEncoder.setBindGroup(0, uniformBindGroup);
         passEncoder.setVertexBuffer(0, cubeVerticesBuffer);
+
+        passEncoder.setBindGroup(0, uniformBindGroup);
         passEncoder.draw(cubeVertexCount, 1, 0, 0);
+
+        // todo 绘制第二个cube
+        passEncoder.setBindGroup(0, uniformBindGroup2);
+        passEncoder.draw(cubeVertexCount, 1, 0, 0);
+
         passEncoder.end();
         const gpuCommandBuffer = commandEncoder.finish();
         device.queue.submit([gpuCommandBuffer]);
 
-        // todo 用于帧刷新（需递归调用）
+        //  用于帧刷新（需递归调用）
         requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);

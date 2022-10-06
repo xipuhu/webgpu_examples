@@ -43,7 +43,7 @@ async function initPipeline(device: GPUDevice, format: GPUTextureFormat) : Promi
         primitive: {
             topology: "triangle-list"
         },
-        multisample: {       // 新增多重采样配置选项
+        multisample: {       // todo 新增多重采样配置选项
             count: 4
         },
         layout: "auto"

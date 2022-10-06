@@ -67,6 +67,7 @@
 			<a class="example active" target="triangle">绘制三角形</a>
 			<a class="example active" target="multisample">多重采样</a>
 			<a class="example active" target="cube">绘制立方体</a>
+			<a class="example active" target="two_cubes">绘制两个立方体</a>
 		</div>
 		<iframe></iframe>
 		<a class="src" target="_blank">&lt; &gt;</a>
@@ -79,7 +80,7 @@
 					window.location.href = "/#" + example.target
 					iframe.src = "/examples/" + example.target + ".html"
 					button.href =
-						"https://github.com/buglas/webgpu-lesson/blob/main/src/" +
+						"https://github.com/xipuhu/webgpu_examples/tree/main/src/" +
 						example.target +
 						".ts"
 					document.querySelector(".active").classList.remove("active")
