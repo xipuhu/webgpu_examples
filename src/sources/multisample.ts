@@ -1,5 +1,5 @@
-import triangle from "./shaders/triangle.vert.wgsl?raw"
-import redFrag from "./shaders/red.frag.wgsl?raw"
+import triangle from "../shaders/multisample/triangle.vert.wgsl?raw"
+import redFrag from "../shaders/multisample/red.frag.wgsl?raw"
 
 async function initWebGPU(canvas: HTMLCanvasElement) {
     if (!navigator.gpu) throw new Error("Not Support WebGpu")

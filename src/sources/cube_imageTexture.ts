@@ -1,12 +1,13 @@
-import cubeVert from "./shaders/cube.vert.wgsl?raw"
-import cubFrag from "./shaders/cube.frag.wgsl?raw"
+import cubeVert from "../shaders/cube_imageTexture/cube.vert.wgsl?raw"
+import cubFrag from "../shaders/cube_imageTexture/cube_imageTexture.frag.wgsl?raw"
+import imageUrl from "../images/texture.webp?url"
 
 import {
     cubeVertexArray,
     cubeVertexSize,
     cubeUVOffset,
     cubePositionOffset,
-    cubeVertexCount} from "./meshes/cube"
+    cubeVertexCount} from "../meshes/cube"
 
 import {mat4, vec3} from "gl-matrix"
 
@@ -97,10 +98,10 @@ async function initPipeline(
         },
         primitive: {
             topology: "triangle-list",
-            // todo 开启背面剔除
+            //  开启背面剔除
             cullMode: "back",
         },
-        // todo 使能深度测试
+        //  使能深度测试
         depthStencil: {
             depthWriteEnabled: true,
             depthCompare: "less",
@@ -113,14 +114,15 @@ async function initPipeline(
     // 返回异步管线
     return await device.createRenderPipelineAsync(descriptor);
 }
+
 // 编写绘图指令，并传递给本地的GPU设备
-function draw(
+async function draw(
     device: GPUDevice,
     context: GPUCanvasContext,
     pipeline: GPURenderPipeline,
     canvas: HTMLCanvasElement
 ) {
-    // todo 创建cube vertex buffer
+    //  创建cube vertex buffer
     const cubeVerticesBuffer = device.createBuffer({
         size: cubeVertexArray.byteLength,
         usage: GPUBufferUsage.VERTEX,
@@ -129,7 +131,7 @@ function draw(
     new Float32Array(cubeVerticesBuffer.getMappedRange()).set(cubeVertexArray);
     cubeVerticesBuffer.unmap();
 
-    // todo 创建depth texture
+    //  创建depth texture
     const presentationSize = {
         width: canvas.clientWidth * devicePixelRatio,
         height: canvas.clientHeight * devicePixelRatio,
@@ -140,14 +142,14 @@ function draw(
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     
-    // todo 创建uniform buffer
+    //  创建uniform buffer
     const uniformBufferSize = 4 * 16;  // 4x4 matrix
     const uniformBuffer = device.createBuffer({
         size: uniformBufferSize,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // todo 为uniformBuffer创建BindGroup
+    //  为uniformBuffer创建BindGroup
     const uniformBindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [
@@ -168,7 +170,7 @@ function draw(
                 storeOp: "store", // store/discard
             },
         ],
-        // todo depthStencil attachment
+        //  depthStencil attachment
         depthStencilAttachment: {
             view: depthTexture.createView(),
             
@@ -178,12 +180,12 @@ function draw(
         }
     };
 
-    // todo 创建投影矩阵
+    //  创建投影矩阵
     const aspect = canvas.width / canvas.height;
     const projectionMatrix = mat4.create();
     mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 1, 1000.0);
 
-    // todo 获取获取MVP矩阵数据
+    //  获取获取MVP矩阵数据
     function getTransformationMatrix() {
         const viewMatrix = mat4.create();
         mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -6));
@@ -198,9 +200,45 @@ function draw(
         mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
         return modelViewProjectionMatrix as Float32Array;
     }
+
+    // todo 1.从host中获取纹理资源并创建devcie纹理buffer
+    const res = await fetch(imageUrl);
+    const img = await res.blob();
+    const bitmap = await createImageBitmap(img);
+    const textureSize = [bitmap.width, bitmap.height];
+    const texture = device.createTexture({
+        size: textureSize,
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+    });
+    device.queue.copyExternalImageToTexture(
+        {source: bitmap},
+        {texture: texture},
+        textureSize
+    );
+    // todo 2.创建一个Sampler
+    const sampler = device.createSampler({
+        magFilter: 'linear',
+        minFilter: 'linear'
+    });
+    // todo 3.将创建好的sampler和GPUTexture打包进bindGroup
+    const textureGroup = device.createBindGroup({
+        label: 'Texture Group with Texture & Sampler',
+        layout: pipeline.getBindGroupLayout(1),
+        entries: [
+            {
+                binding: 0,
+                resource: sampler
+            },
+            {
+                binding: 1,
+                resource: texture.createView()
+            }
+        ]
+    })
     
     function frame(){
-        // todo 将旋转矩阵数据写入uniform buffer中
+        //  将旋转矩阵数据写入uniform buffer中
         const transformationMatrix = getTransformationMatrix();
         device.queue.writeBuffer(
             uniformBuffer,
@@ -210,23 +248,25 @@ function draw(
             transformationMatrix.byteLength,
         );
 
-        // todo 获取最新的canvas上下文纹理视图用于刷新帧内容
+        //  获取最新的canvas上下文纹理视图用于刷新帧内容
         renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
 
         const commandEncoder = device.createCommandEncoder();
         const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
         passEncoder.setPipeline(pipeline);
         passEncoder.setBindGroup(0, uniformBindGroup);
+        // todo 4.将textureGroup绑定到shader中
+        passEncoder.setBindGroup(1, textureGroup);
         passEncoder.setVertexBuffer(0, cubeVerticesBuffer);
         passEncoder.draw(cubeVertexCount, 1, 0, 0);
         passEncoder.end();
         const gpuCommandBuffer = commandEncoder.finish();
         device.queue.submit([gpuCommandBuffer]);
 
-        // todo 用于帧刷新（需递归调用）
+        //  用于帧刷新（需递归调用）
         requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
+    frame();
 }
 
 async function run() {
