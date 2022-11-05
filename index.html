@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Webgpu Lesson</title>
+		<title>xipuhu's Webgpu Examples</title>
 		<style>
 			html,
 			body {
@@ -15,7 +15,7 @@
 				display: flex;
 			}
 			.menu {
-				width: 200px;
+				width: 300px;
 				height: 100%;
 				border-right: 1px solid #888;
 				overflow: auto;
@@ -64,13 +64,19 @@
 			<h3>WebGPU Examples</h3>
 			<a href="https://github.com/xipuhu/webgpu_examples" target="_blank">Github</a>
 			<hr />
-			<a class="example active" target="triangle">绘制三角形</a>
-            <a class="example active" target="color_triangle">改变三角形颜色</a>
-			<a class="example active" target="multisample">多重采样</a>
-			<a class="example active" target="cube">绘制立方体</a>
-			<a class="example active" target="two_cubes">绘制两个立方体</a>
-            <a class="example active" target="instanced_cubes">实例化方式绘制多个立方体</a>
-            <a class="example active" target="cube_imageTexture">带纹理的立方体</a>
+            绘制三角形
+            <ol>
+                <li><a class="example active" target="triangle">绘制三角形</a></li>
+                <li><a class="example active" target="color_triangle">改变三角形颜色</a></li>
+                <li><a class="example active" target="multisample">多重采样</a></li>
+            </ol>
+            绘制立方体
+            <ol>
+                <li><a class="example active" target="cube">绘制一个立方体</a></li>
+                <li><a class="example active" target="two_cubes">绘制两个立方体</a></li>
+                <li><a class="example active" target="instanced_cubes">实例化方式绘制多个立方体</a></li>
+                <li><a class="example active" target="cube_imageTexture">带纹理的立方体</a></li>
+            </ol>
 		</div>
 		<iframe></iframe>
 		<a class="src" target="_blank">&lt; &gt;</a>
@@ -83,7 +89,7 @@
 					window.location.href = "/#" + example.target
 					iframe.src = "/examples/" + example.target + ".html"
 					button.href =
-						"https://github.com/xipuhu/webgpu_examples/tree/main/src/" +
+						"https://github.com/xipuhu/webgpu_examples/tree/main/src/sources/" +
 						example.target +
 						".ts"
 					document.querySelector(".active").classList.remove("active")
