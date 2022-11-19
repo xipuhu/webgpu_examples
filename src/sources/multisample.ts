@@ -53,7 +53,6 @@ async function initPipeline(device: GPUDevice, format: GPUTextureFormat) : Promi
 
 function draw(device: GPUDevice, context: GPUCanvasContext, pipeline: GPURenderPipeline) {
     const commandEncoder = device.createCommandEncoder()
-    const view = context.getCurrentTexture().createView()
 
     // 多重采样配置
     const curtexture = context.getCurrentTexture()
