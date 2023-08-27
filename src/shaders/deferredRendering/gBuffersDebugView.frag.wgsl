@@ -1,20 +1,21 @@
-@group(0) @binding(0) var gBufferPosition: texture_2d<f32>;
-@group(0) @binding(1) var gBufferNormal: texture_2d<f32>;
-@group(0) @binding(2) var gBufferAlbedo: texture_2d<f32>;
+@group(0) @binding(0) var gBufferNormal: texture_2d<f32>;
+@group(0) @binding(1) var gBufferAlbedo: texture_2d<f32>;
+@group(0) @binding(2) var gBufferDepth: texture_depth_2d;
 
-struct CanvasConstants {
-    size: vec2<f32>
-}
-@group(1) @binding(0) var<uniform> canvas: CanvasConstants;
+override canvasSizeWidth: f32;
+override canvasSizeHeight: f32;
 
 @fragment
 fn main(
     @builtin(position) coord: vec4<f32>
 ) -> @location(0) vec4<f32> {
     var result: vec4<f32>;
-    let c = coord.xy / canvas.size;
+    let c = coord.xy / vec2<f32>(canvasSizeWidth, canvasSizeHeight);
     if (c.x < 0.33333) {
-        result = textureLoad(gBufferPosition, vec2<i32>(floor(coord.xy)), 0);
+        let rawDepth = textureLoad(gBufferDepth, vec2<i32>(floor(coord.xy)), 0);
+        // remap depth into something a bit more visible
+        let depth = (1.0 - rawDepth) * 50.0;
+        result = vec4(depth);
     } else if (c.x < 0.66667) {
         result = textureLoad(gBufferNormal, vec2<i32>(floor(coord.xy)), 0);
         result.x = (result.x + 1.0) * 0.5;

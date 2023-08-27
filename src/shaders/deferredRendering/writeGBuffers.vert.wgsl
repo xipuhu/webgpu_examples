@@ -10,9 +10,8 @@ struct Camera {
 
 struct VertexOutput {
     @builtin(position) Position: vec4<f32>,
-    @location(0) fragPosition: vec3<f32>,
-    @location(1) fragNormal: vec3<f32>,
-    @location(2) fragUV: vec2<f32>
+    @location(0) fragNormal: vec3<f32>,
+    @location(1) fragUV: vec2<f32>
 }
 
 @vertex
@@ -22,8 +21,8 @@ fn main(
     @location(2) uv: vec2<f32>
 ) -> VertexOutput {
     var output: VertexOutput;
-    output.fragPosition = (uniforms.modelMatrix * vec4<f32>(position, 1.0)).xyz;
-    output.Position = camera.viewProjectionMatrix * vec4<f32>(output.fragPosition, 1.0);
+    let fragWorldPosition = (uniforms.modelMatrix * vec4<f32>(position, 1.0)).xyz;
+    output.Position = camera.viewProjectionMatrix * vec4<f32>(fragWorldPosition, 1.0);
     output.fragNormal = normalize((uniforms.normalModelMatrix * vec4<f32>(normal, 1.0)).xyz);
     output.fragUV = uv;
     return output;

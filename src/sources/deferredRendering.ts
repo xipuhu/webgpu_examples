@@ -25,18 +25,15 @@ document.body.appendChild(stats.dom);
 /* 
 1、绘制stanfordDragon模型
 2、创建三个pipelien: writeGBuffersPipeline、gBuffersDebugViewPipeline和deferredRenderPipeline
-2、创建三个texture buffer（position、normal和albedo）
-3、创建三个pass：gBufferPass、lightPass和deferredRenderingPass
-4、不同的pipeline之间数据交流是通过绑定在pipeline上面的BindGroupLayout来完成的
+3、创建三个texture buffer（position、normal和albedo）
+4、创建三个pass：gBufferPass、lightPass和deferredRenderingPass
+5、不同的pipeline之间数据交流是通过绑定在pipeline上面的BindGroupLayout来完成的
 */
 
 // light属性
 const kMaxNumLights = 1024;
 const lightExtentMin = vec3.fromValues(-50, -30, -50);
 const lightExtentMax = vec3.fromValues(50, 50, 50);
-
-
-
 
 // GUI组件初始化
 const gui = new GUI();
@@ -67,8 +64,8 @@ async function initWebGPU(canvas: HTMLCanvasElement) {
         width: canvas.clientWidth * devicePixelRatio,
         height: canvas.clientHeight * devicePixelRatio,
     };
-    canvas.width = presentationSize.width;
-    canvas.height =presentationSize.height;
+    canvas.width  = presentationSize.width;
+    canvas.height = presentationSize.height;
     //配置WebGPU
     context.configure({
         device,
@@ -83,7 +80,8 @@ async function initWebGPU(canvas: HTMLCanvasElement) {
 // 创建渲染管线
 async function initPipeline(
     device: GPUDevice,
-    format: GPUTextureFormat
+    format: GPUTextureFormat,
+    canvas: HTMLCanvasElement
 ) {
     // vertex buffer
     const vertexBuffers: Iterable<GPUVertexBufferLayout> = [{
@@ -131,8 +129,7 @@ async function initPipeline(
             }),
             entryPoint: 'main',
             targets: [
-                {format: 'rgba32float'},  // position
-                {format: 'rgba32float'},  // normal
+                {format: 'rgba16float'},  // normal
                 {format: 'bgra8unorm'}    // albedo
             ]
         },
@@ -166,7 +163,7 @@ async function initPipeline(
                 binding: 2,
                 visibility: GPUShaderStage.FRAGMENT,
                 texture: {
-                    sampleType: 'unfilterable-float',
+                    sampleType: 'depth',
                 }
             }
         ]
@@ -187,29 +184,21 @@ async function initPipeline(
                 buffer: {
                     type: 'uniform',
                 }
-            }
-        ]
-    });
-    // 3. canvasSizeUniformBindGroupLayout
-    const canvasSizeUniformBindGroupLayout = device.createBindGroupLayout({
-        entries: [
+            },
             {
-                binding: 0,
-                visibility: GPUShaderStage.FRAGMENT,
+                binding: 2,
+                visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
                 buffer: {
-                    type: 'uniform'
+                    type: 'uniform',
                 }
             }
         ]
     });
 
-    // 4. gBuffersDebugViewPipeline
+    // 3. gBuffersDebugViewPipeline
     const gBuffersDebugViewPipeline = device.createRenderPipeline({
         layout: device.createPipelineLayout({
-            bindGroupLayouts: [
-                gBufferTextureBindGroupLayout,
-                canvasSizeUniformBindGroupLayout
-            ]
+            bindGroupLayouts: [gBufferTextureBindGroupLayout],
         }),
         vertex: {
             module: device.createShaderModule({
@@ -226,17 +215,20 @@ async function initPipeline(
                 {
                     format,
                 }
-            ]
+            ],
+            constants: {
+                canvasSizeWidth: canvas.width,
+                canvasSizeHeight: canvas.height,
+            }
         },
         primitive
     });
-    // 5. deferredRenderPipeline
+    // 4. deferredRenderPipeline
     const deferredRenderingPipeline = device.createRenderPipeline({
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
-                gBufferTextureBindGroupLayout,
-                lightsBufferBindGroupLayout,
-                canvasSizeUniformBindGroupLayout
+                gBufferTextureBindGroupLayout,    // @group(0)
+                lightsBufferBindGroupLayout,      // @group(1)
             ]
         }),
         vertex: {
@@ -258,7 +250,7 @@ async function initPipeline(
         },
         primitive
     });
-    // 6. lightUpdateComputePipeline
+    // 5. lightUpdateComputePipeline
     const lightUpdateComputePipeline = device.createComputePipeline({
         layout: 'auto',
         compute: {
@@ -291,7 +283,7 @@ async function createResources(
     const depthTexture = device.createTexture({
         size: presentationSize,
         format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
     });
 
     // 1、创建model的vertexBuffer和indexBuffer
@@ -328,10 +320,10 @@ async function createResources(
     }
 
     // 2、创建GBuffer texture render targets和gBufferTextureBindGroup
-    const gBufferTexture2DFloat = device.createTexture({
+    const gBufferTexture2DFloat16 = device.createTexture({
         size: [...presentationSize, 2],
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        format: 'rgba32float'
+        format: 'rgba16float'
     });
     const gBufferTextureAlbedo = device.createTexture({
         size: presentationSize,
@@ -339,17 +331,13 @@ async function createResources(
         format: 'bgra8unorm'
     })
     const gBufferTextureViews = [
-        gBufferTexture2DFloat.createView({
+        gBufferTexture2DFloat16.createView({
             dimension: '2d',
             baseArrayLayer: 0,
             arrayLayerCount: 1
         }),
-        gBufferTexture2DFloat.createView({
-            dimension: '2d',
-            baseArrayLayer: 1,
-            arrayLayerCount: 1
-        }),
-        gBufferTextureAlbedo.createView()
+        gBufferTextureAlbedo.createView(),
+        depthTexture.createView()
     ];
     const gBufferTexturesBindGroup = device.createBindGroup({
         layout: pipelineObj.gBuffersDebugViewPipeline.getBindGroupLayout(0),
@@ -375,7 +363,7 @@ async function createResources(
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
     const cameraUniformBuffer = device.createBuffer({
-        size: 4 * 16, // 4x4 matrix
+        size: 4 * 16 * 2, // 4x4 matrix
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
     const sceneUniformBindGroup = device.createBindGroup({
@@ -396,24 +384,7 @@ async function createResources(
         ]
     });
 
-    // 4、创建canvasSizeUniformBingGroup
-    const canvasSizeUniformBuffer = device.createBuffer({
-        size: 4 * 2,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const canvasSizeUniformBindGroup = device.createBindGroup({
-        layout: pipelineObj.gBuffersDebugViewPipeline.getBindGroupLayout(1),
-        entries: [
-            {
-                binding: 0,
-                resource: {
-                    buffer: canvasSizeUniformBuffer
-                }
-            }
-        ]
-    });
-
-    // 5、创建lightsBufferBindGroup和lightsBufferComputeBindGroup
+    // 4、创建lightsBufferBindGroup和lightsBufferComputeBindGroup
     const lightDataStride = 8;
     const bufferSizeInByte = Float32Array.BYTES_PER_ELEMENT * lightDataStride * kMaxNumLights;
     const lightsBuffer = device.createBuffer({
@@ -462,6 +433,12 @@ async function createResources(
                 resource: {
                     buffer: configUniformBuffer
                 }
+            },
+            {
+                binding: 2,
+                resource: {
+                    buffer: cameraUniformBuffer,
+                }
             }
         ]
     });
@@ -494,7 +471,7 @@ async function createResources(
     vec3.sub(extent, lightExtentMax, lightExtentMin);
     const lightData = new Float32Array(lightsBuffer.getMappedRange());
     const tmpVec4 = vec4.create();
-   // const lightDataStride = 8;
+
     let offset = 0;
     for (let i = 0; i < kMaxNumLights; ++i) {
         offset = lightDataStride * i;
@@ -515,9 +492,8 @@ async function createResources(
     lightsBuffer.unmap();
 
     return {depthTexture, dragonVertexBuffer, dragonIndexBuffer,
-            gBufferTexture2DFloat, gBufferTextureAlbedo, gBufferTextureViews, gBufferTexturesBindGroup,
+            gBufferTexture2DFloat16, gBufferTextureAlbedo, gBufferTextureViews, gBufferTexturesBindGroup,
             modelUniformBuffer, cameraUniformBuffer, sceneUniformBindGroup,
-            canvasSizeUniformBuffer, canvasSizeUniformBindGroup,
             lightsBuffer, configUniformBuffer, lightExtentBuffer, lightsBufferBindGroup, lightsBufferComputeBindGroup};
 }
 
@@ -539,13 +515,11 @@ function draw(
         lightExtentBuffer: GPUBuffer,
         cameraUniformBuffer: GPUBuffer,
         modelUniformBuffer: GPUBuffer,
-        canvasSizeUniformBuffer: GPUBuffer,
         gBufferTextureViews: GPUTextureView [],
         sceneUniformBindGroup: GPUBindGroup,
         lightsBufferBindGroup: GPUBindGroup,
         lightsBufferComputeBindGroup: GPUBindGroup,
-        gBufferTexturesBindGroup: GPUBindGroup,
-        canvasSizeUniformBindGroup: GPUBindGroup
+        gBufferTexturesBindGroup: GPUBindGroup
     }
 ) {
     // 1、写入lightExtentData数据
@@ -560,34 +534,34 @@ function draw(
         lightExtentData.byteLength
     );
 
-    // 2、设置场景矩阵数据
+    // 2、获取显示分辨率
     const presentationSize = [
         canvas.clientWidth * devicePixelRatio, 
         canvas.clientHeight * devicePixelRatio
     ];
+
+    // 3、设置mvp矩阵用于设置camera
     const eyePosition = vec3.fromValues(0, 50, -100);
     const upVector = vec3.fromValues(0, 1, 0);
     const origin = vec3.fromValues(0, 0, 0);
-    // mvp matrices
     const projectionMatrix = mat4.create();
     const aspect = presentationSize[0] / presentationSize[1];
-    mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 1, 2000.0);
+    mat4.perspective(
+        projectionMatrix,
+        (2 * Math.PI) / 5,
+        aspect,
+        1,
+        2000.0
+    );
+
     const viewMatrix = mat4.create();
     mat4.lookAt(viewMatrix, eyePosition, origin, upVector);
     const viewProjMatrix = mat4.create();
     mat4.multiply(viewProjMatrix, projectionMatrix, viewMatrix);
     const modelMatrix = mat4.create();
-    mat4.translate(modelMatrix, modelMatrix, vec3.fromValues(0, -5, 0));
-    mat4.translate(modelMatrix, modelMatrix, vec3.fromValues(0, -40, 0));
-    // 将数据写入到cameraUniformBuffer和modelUniformBuffer中
-    const cameraMatrixData = viewProjMatrix as Float32Array;
-    device.queue.writeBuffer(
-        resourcesObj.cameraUniformBuffer,
-        0,
-        cameraMatrixData.buffer,
-        cameraMatrixData.byteOffset,
-        cameraMatrixData.byteLength
-    )
+    mat4.translate(modelMatrix, modelMatrix, vec3.fromValues(0, -45, 0));
+
+    // 4、将数据写入到modelUniformBuffer中
     const modelData = modelMatrix as Float32Array;
     device.queue.writeBuffer(
         resourcesObj.modelUniformBuffer,
@@ -597,7 +571,6 @@ function draw(
         modelData.byteLength
     )
     const invertTransposeModelMatrix = mat4.create();
-    mat4.invert(invertTransposeModelMatrix, modelMatrix);
     mat4.transpose(invertTransposeModelMatrix, invertTransposeModelMatrix);
     const normalModelData = invertTransposeModelMatrix as Float32Array;
     device.queue.writeBuffer(
@@ -608,19 +581,10 @@ function draw(
         normalModelData.byteLength
     )
 
-    // 3、通过canvas size获取从gBuffer textures中采样时所需的coord
-    const canvasSizeData = new Float32Array(presentationSize);
-    device.queue.writeBuffer(
-        resourcesObj.canvasSizeUniformBuffer,
-        0,
-        canvasSizeData.buffer,
-        canvasSizeData.byteOffset,
-        canvasSizeData.byteLength
-    )
-
-    // 4、计算每一次需要旋转camera的数据
+    // 5、计算每一次需要旋转camera的数据
     function getCameraViewProjMatrix() {
-        const eyePosition = vec3.fromValues(0, 50, -100);
+        const eyePosition = vec3.fromValues(0, 50, -200);
+
         const rad = Math.PI * (Date.now() / 5000);
         vec3.rotateY(eyePosition, eyePosition, origin, rad);
 
@@ -631,29 +595,18 @@ function draw(
         return viewProjMatrix as Float32Array;
     }
 
-    // 5、定义writeGBufferPassDescriptor和textureQuadPassDescriptor
+    // 6、定义writeGBufferPassDescriptor和textureQuadPassDescriptor
     const writeGBufferPassDescriptor: GPURenderPassDescriptor = {
         colorAttachments: [
             {
                 view: resourcesObj.gBufferTextureViews[0],
-                clearValue: {
-                    r: Number.MAX_VALUE,
-                    g: Number.MAX_VALUE,
-                    b: Number.MAX_VALUE,
-                    a: 1.0
-                },
+                clearValue: {r: 0.0, g: 0.0, b: 1.0, a: 1.0},
                 loadOp: 'clear',
                 storeOp: 'store'
             },
             {
                 view: resourcesObj.gBufferTextureViews[1],
                 clearValue: {r: 0.0, g: 0.0, b: 0.0, a: 1.0},
-                loadOp: 'clear',
-                storeOp: 'store'
-            },
-            {
-                view: resourcesObj.gBufferTextureViews[2],
-                clearValue: {r: 0.2, g: 0.3, b: 0.3, a: 1.0},
                 loadOp: 'clear',
                 storeOp: 'store'
             }
@@ -689,7 +642,20 @@ function draw(
             cameraViewProj.byteLength
         )
 
-        // 2、将gBufferPass、lightPass和deferredRenderingPass绑定到commandEncoder上
+        // 2、获取cameraViewProj的逆矩阵（用于将像素屏幕坐标转换成世界坐标）
+        const cameraInvViewProj = mat4.create();
+        mat4.invert(cameraInvViewProj, cameraViewProj);
+       const cameraInvViewProj2 = cameraInvViewProj as Float32Array;
+
+        device.queue.writeBuffer(
+            resourcesObj.cameraUniformBuffer,
+            64,
+            cameraInvViewProj2.buffer,
+            cameraInvViewProj2.byteOffset,
+            cameraInvViewProj2.byteLength
+        )
+
+        // 3、将gBufferPass、lightPass和deferredRenderingPass绑定到commandEncoder上
         const commandEncoder = device.createCommandEncoder();
         // gBufferPass
         {
@@ -720,7 +686,6 @@ function draw(
             const debugViewPass = commandEncoder.beginRenderPass(textureQuadPassDescriptor);
             debugViewPass.setPipeline(pipelineObj.gBuffersDebugViewPipeline);
             debugViewPass.setBindGroup(0, resourcesObj.gBufferTexturesBindGroup);
-            debugViewPass.setBindGroup(1, resourcesObj.canvasSizeUniformBindGroup);
             debugViewPass.draw(6);
             debugViewPass.end();
         } else {
@@ -729,11 +694,10 @@ function draw(
             deferredRenderingPass.setPipeline(pipelineObj.deferredRenderingPipeline);
             deferredRenderingPass.setBindGroup(0, resourcesObj.gBufferTexturesBindGroup);
             deferredRenderingPass.setBindGroup(1, resourcesObj.lightsBufferBindGroup);
-            deferredRenderingPass.setBindGroup(2, resourcesObj.canvasSizeUniformBindGroup);
             deferredRenderingPass.draw(6);
             deferredRenderingPass.end();
         }
-        // 3、提交gpuCommandBuffer
+        // 4、提交gpuCommandBuffer
         const gpuCommandBuffer = commandEncoder.finish();
         device.queue.submit([gpuCommandBuffer]);
 
@@ -752,7 +716,7 @@ async function run() {
     // init WebGPU
     const { device, context, format } = await initWebGPU(canvas);
     // render pipeline
-    const pipelineObj = await initPipeline(device, format);
+    const pipelineObj = await initPipeline(device, format, canvas);
     // create all resources
     const resourcesObj = await createResources(device, pipelineObj, canvas);
     // draw call
